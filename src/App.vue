@@ -59,7 +59,7 @@ const loading = ref(true)
 
 async function loadMovies() {
   try {
-    const response = await fetch('/public/movieData.json')
+    const response = await fetch('/movieData.json')
     if (!response.ok) throw new Error('Failed to fetch movies')
 
     movies.value = await response.json()
