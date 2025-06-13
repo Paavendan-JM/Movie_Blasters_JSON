@@ -1,4 +1,4 @@
-![Movie Blasters Banner](./banner.jpg)
+![Movie Blasters Banner](./banner1.jpg)
 
 # 🎬 Movie Blasters - A Daily Movie Guessing Game
 
