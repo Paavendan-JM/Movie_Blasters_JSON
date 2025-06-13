@@ -2,12 +2,36 @@
   <div class="container">
     <h1>🎬 Movie Blasters</h1>
 
+    <!-- Instructions + Language selection before starting -->
     <div v-if="!started">
-      <button @click="startGame" :disabled="loading">
+      <div class="instructions">
+        <h2>📝 Instructions</h2>
+        <ul>
+          <li>Guess the movie using up to 5 clues.</li>
+          <li>Each wrong guess advances the clue.</li>
+          <li>Penalty of 5 seconds will be added for each wrong guess.</li>
+          <li>You lose if all 5 clues are used.</li>
+          <li>Select a language to begin.</li>
+        </ul>
+      </div>
+
+      <div class="language-buttons">
+        <button
+          v-for="lang in availableLanguages"
+          :key="lang"
+          @click="selectLanguage(lang)"
+          :class="{ active: selectedLanguage === lang }"
+        >
+          {{ lang }}
+        </button>
+      </div>
+
+      <button @click="startGame" :disabled="!selectedLanguage || loading">
         {{ loading ? 'Loading movies...' : 'Start Game' }}
       </button>
     </div>
 
+    <!-- Game screen -->
     <div v-else>
       <p>🕒 Time: {{ timer }} seconds</p>
       <p>Clue: {{ currentRound + 1 }} / 5</p>
@@ -27,7 +51,7 @@
       <p v-if="message && !gameOver" v-html="message" class="animated-message"></p>
     </div>
 
-    <!-- Popup Modal -->
+    <!-- Game Over Modal -->
     <div v-if="gameOver" class="modal">
       <div class="modal-content">
         <h2>{{ messageTitle }}</h2>
@@ -53,37 +77,45 @@ const gameOver = ref(false)
 const timer = ref(0)
 let timerInterval = null
 
-const movies = ref([])
-const gameMovie = ref(null)
 const loading = ref(true)
+const gameMovie = ref(null)
+const movies = ref([])
+const selectedLanguage = ref('')
+const availableLanguages = ref(['English', 'Hindi', 'Tamil', 'Malayalam'])
+const languageMap = ref({})
 
-async function loadMovies() {
+// Load JSON on mount
+onMounted(async () => {
   try {
-    const response = await fetch('/movieData.json')
-    if (!response.ok) throw new Error('Failed to fetch movies')
-
-    movies.value = await response.json()
-  } catch (e) {
-    console.error('Failed to load movies:', e)
-    message.value = 'Error loading movie data. Please try again later.'
+    const [movieRes, langRes] = await Promise.all([
+      fetch('/movieData.json'),
+      fetch('/languageMap.json')
+    ])
+    if (!movieRes.ok || !langRes.ok) throw new Error('Failed to fetch data')
+    movies.value = await movieRes.json()
+    languageMap.value = await langRes.json()
+  } catch (err) {
+    console.error('Error loading data:', err)
+    message.value = 'Failed to load movie data. Please try again.'
   } finally {
     loading.value = false
   }
-}
+})
 
-function pickRandomMovie() {
-  if (movies.value.length === 0) return null
-  const idx = Math.floor(Math.random() * movies.value.length)
-  return movies.value[idx]
+function selectLanguage(lang) {
+  selectedLanguage.value = lang
 }
 
 function startGame() {
-  if (movies.value.length === 0) {
-    message.value = 'Movie data not loaded yet.'
+  const validIds = languageMap.value[selectedLanguage.value] || []
+  const filtered = movies.value.filter(m => validIds.includes(m.id))
+
+  if (filtered.length === 0) {
+    message.value = 'No movies available in this language.'
     return
   }
 
-  gameMovie.value = pickRandomMovie()
+  gameMovie.value = filtered[Math.floor(Math.random() * filtered.length)]
   started.value = true
   gameOver.value = false
   currentRound.value = 0
@@ -104,23 +136,26 @@ function submitGuess() {
   const correctAnswer = gameMovie.value.name.toLowerCase()
 
   if (userGuess === correctAnswer) {
-    messageTitle.value = '🎉 You WON!'
-    message.value = `✅ Correct... You WON !!!<br>⏱️ You took ${timer.value} seconds`
+  messageTitle.value = '🎉 You WON!'
+  message.value = `✅ Correct... You WON !!!<br>⏱️ You took ${timer.value} seconds`
+  gameOver.value = true
+  clearInterval(timerInterval)
+  return
+} else {
+  currentRound.value++
+  timer.value += 5  
+
+  if (currentRound.value >= 5) {
+    messageTitle.value = '💔 Game Over'
+    message.value = '❌ You used all 5 clues!'
     gameOver.value = true
     clearInterval(timerInterval)
     return
   } else {
-    currentRound.value++
-    if (currentRound.value >= 5) {
-      messageTitle.value = '💔 Game Over'
-      message.value = '❌ You used all 5 clues!'
-      gameOver.value = true
-      clearInterval(timerInterval)
-      return
-    } else {
-      message.value = '❌ Wrong guess. Try the next clue! Next clue in 5 seconds...'
-    }
+    message.value = '❌ Wrong guess. +5 seconds penalty. Try the next clue!'
   }
+}
+
 
   guess.value = ''
 }
@@ -133,37 +168,48 @@ function resetGame() {
   messageTitle.value = ''
 }
 
-
 function shareResult() {
-  const resultText = `🎬 Movie Blasters - I ${messageTitle.value.includes('WON') ? 'won' : 'lost'}!\nMovie: ${gameMovie.value.name}\nTime: ${timer.value} seconds`
-
+  const result = `🎬 Movie Blasters - I ${messageTitle.value.includes('WON') ? 'won' : 'lost'}!\nMovie: ${gameMovie.value.name}\nTime: ${timer.value} seconds`
   if (navigator.share) {
-    navigator
-      .share({
-        title: 'Movie Blasters Result',
-        text: resultText
-      })
-      .catch(err => console.error('Share failed:', err))
+    navigator.share({ title: 'Movie Blasters', text: result })
   } else {
-    navigator.clipboard.writeText(resultText)
+    navigator.clipboard.writeText(result)
     alert('Result copied to clipboard!')
   }
 }
-
-onMounted(() => {
-  loadMovies()
-})
 </script>
 
 <style scoped>
 .container {
   z-index: 1;
-  background-color: rgb(0, 0, 0);
+  background-color: black;
   padding: 40px 30px;
   border-radius: 7%;
   color: white;
   text-align: center;
   box-shadow: 0 0 10px 4px #07a907;
+}
+
+.instructions {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.instructions ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.language-buttons button {
+  margin: 5px;
+}
+
+.language-buttons .active {
+  background-color: #1e6f1e;
+  border: 2px solid #fff;
 }
 
 .clue-box {
@@ -232,20 +278,6 @@ button:hover:not(:disabled) {
   animation: fadeInPop 0.5s ease;
 }
 
-@keyframes popFade {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
 @keyframes fadeInPop {
   0% {
     opacity: 0;
@@ -258,6 +290,6 @@ button:hover:not(:disabled) {
 }
 
 .animated-message {
-  animation: popFade 0.6s ease-out;
+  animation: fadeInPop 0.6s ease-out;
 }
 </style>
